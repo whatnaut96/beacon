@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-10-15T02:36:51Z",
+  "event": "Scan",
+  "ScanType": "AutoScan",
+  "BodyName": "Hollatja A Belt Cluster 2",
+  "BodyID": 3,
+  "Parents": [
+    {
+      "Ring": 1
+    },
+    {
+      "Star": 0
+    }
+  ],
+  "StarSystem": "Hollatja",
+  "SystemAddress": 5370319620976,
+  "DistanceFromArrivalLS": 2.985544,
+  "WasDiscovered": true,
+  "WasMapped": false,
+  "WasFootfalled": false
+}

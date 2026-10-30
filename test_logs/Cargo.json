@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-10-10T00:56:47Z",
+  "event": "Cargo",
+  "Vessel": "Ship",
+  "Count": 2,
+  "Inventory": [
+    {
+      "Name": "performanceenhancers",
+      "Name_Localised": "Performance Enhancers",
+      "MissionID": 1068029926,
+      "Count": 2,
+      "Stolen": 0
+    }
+  ]
+}

@@ -1,0 +1,113 @@
+{
+  "timestamp": "2026-10-16T01:08:18Z",
+  "event": "ModuleInfo",
+  "Modules": [
+    {
+      "Slot": "MainEngines",
+      "Item": "int_engine_size2_class1",
+      "Power": 2.000000,
+      "Priority": 0
+    },
+    {
+      "Slot": "Slot01_Size2",
+      "Item": "int_shieldgenerator_size2_class1",
+      "Power": 0.900000,
+      "Priority": 2
+    },
+    {
+      "Slot": "CargoHatch",
+      "Item": "modularcargobaydoor",
+      "Power": 0.600000,
+      "Priority": 2
+    },
+    {
+      "Slot": "Slot06_Size1",
+      "Item": "int_dockingcomputer_advanced",
+      "Power": 0.450000,
+      "Priority": 2
+    },
+    {
+      "Slot": "SmallHardpoint1",
+      "Item": "hpt_pulselaser_gimbal_small",
+      "Power": 0.390000,
+      "Priority": 2
+    },
+    {
+      "Slot": "SmallHardpoint2",
+      "Item": "hpt_pulselaser_gimbal_small",
+      "Power": 0.390000,
+      "Priority": 2
+    },
+    {
+      "Slot": "LifeSupport",
+      "Item": "int_lifesupport_size1_class1",
+      "Power": 0.320000,
+      "Priority": 2
+    },
+    {
+      "Slot": "PowerDistributor",
+      "Item": "int_powerdistributor_size1_class1",
+      "Power": 0.320000,
+      "Priority": 2
+    },
+    {
+      "Slot": "Slot05_Size1",
+      "Item": "int_supercruiseassist",
+      "Power": 0.300000,
+      "Priority": 2
+    },
+    {
+      "Slot": "FrameShiftDrive",
+      "Item": "int_hyperdrive_size2_class1",
+      "Power": 0.160000,
+      "Priority": 2
+    },
+    {
+      "Slot": "Radar",
+      "Item": "int_sensors_size1_class1",
+      "Power": 0.160000,
+      "Priority": 2
+    },
+    {
+      "Slot": "ShipCockpit",
+      "Item": "sidewinder_cockpit",
+      "Power": 0.000000
+    },
+    {
+      "Slot": "PowerPlant",
+      "Item": "int_powerplant_size2_class1",
+      "Power": 0.000000
+    },
+    {
+      "Slot": "Slot02_Size2",
+      "Item": "int_cargorack_size2_class1",
+      "Power": 0.000000
+    },
+    {
+      "Slot": "PlanetaryApproachSuite",
+      "Item": "int_planetapproachsuite_advanced",
+      "Power": 0.000000
+    },
+    {
+      "Slot": "DataLinkScanner",
+      "Item": "hpt_shipdatalinkscanner",
+      "Power": 0.000000,
+      "Priority": 0
+    },
+    {
+      "Slot": "CodexScanner",
+      "Item": "int_codexscanner",
+      "Power": 0.000000
+    },
+    {
+      "Slot": "DiscoveryScanner",
+      "Item": "int_stellarbodydiscoveryscanner_standard",
+      "Power": 0.000000
+    },
+    {
+      "Slot": "ColonisationSuite",
+      "Item": "int_colonisation",
+      "Power": 0.000000
+    }
+  ]
+}

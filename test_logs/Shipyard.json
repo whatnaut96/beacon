@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-10-16T01:24:27Z",
+  "event": "Shipyard",
+  "MarketID": 3707458560,
+  "StationName": "V2M-W4J",
+  "StarSystem": "Hollatja",
+  "Horizons": true,
+  "AllowCobraMkIV": false,
+  "PriceList": [
+    {
+      "id": 0,
+      "ShipType": "adder",
+      "ShipPrice": 81952
+    }
+  ]
+}

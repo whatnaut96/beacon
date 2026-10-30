@@ -1,0 +1,46 @@
+{
+  "timestamp": "2026-10-10T01:04:59Z",
+  "event": "NavRoute",
+  "Route": [
+    {
+      "StarSystem": "Dromi",
+      "SystemAddress": 1213084977515,
+      "StarPos": [
+        25.40625,
+        -31.06250,
+        41.62500
+      ],
+      "StarClass": "G"
+    },
+    {
+      "StarSystem": "Wolfsegen",
+      "SystemAddress": 22961431923568,
+      "StarPos": [
+        21.81250,
+        -31.03125,
+        43.75000
+      ],
+      "StarClass": "T"
+    },
+    {
+      "StarSystem": "Tarnkappe",
+      "SystemAddress": 5369245879160,
+      "StarPos": [
+        17.31250,
+        -33.50000,
+        45.62500
+      ],
+      "StarClass": "L"
+    },
+    {
+      "StarSystem": "Sharur",
+      "SystemAddress": 1733187048154,
+      "StarPos": [
+        18.31250,
+        -36.50000,
+        48.25000
+      ],
+      "StarClass": "K"
+    }
+  ]
+}

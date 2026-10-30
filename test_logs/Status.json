@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-10-16T01:44:53Z",
+  "event": "Status",
+  "Flags": 16842760,
+  "Flags2": 0,
+  "Pips": [
+    4,
+    4,
+    4
+  ],
+  "FireGroup": 0,
+  "GuiFocus": 0,
+  "Fuel": {
+    "FuelMain": 6.725479,
+    "FuelReservoir": 0.113702
+  },
+  "Cargo": 0.000000,
+  "LegalState": "Clean",
+  "Balance": 194400,
+  "Destination": {
+    "System": 11666339079601,
+    "Body": 13,
+    "Name": "Braddocks Hide"
+  }
+}
+
