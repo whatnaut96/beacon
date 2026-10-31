@@ -1,11 +1,12 @@
+use clap::Parser;
 use futures::{
     FutureExt, StreamExt,
     future::{Either, pending},
     select_biased,
 };
-use futures_executor::block_on;
 use futures_timer::Delay;
 use notify::{Event, RecursiveMode, Result, Watcher};
+use reqwest::{Certificate, Client, Url};
 use std::{
     collections::HashMap,
     fs::{self, File},
@@ -15,9 +16,25 @@ use std::{
 };
 use tracing::{debug, error, info};
 
-struct BeaconConfig {
+/// A small client to send data from Elite Dangerous Journals to an HTTP Server
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct BeaconArgs {
+    /// Path of the journals to watch
+    #[arg(short, long)]
     watch_path: PathBuf,
+    /// Debounce interval for the file watcher (milliseconds)
+    #[arg(long, default_value_t = 50)]
     debounce_ms: u64,
+    /// HTTP endpoint to send data to
+    #[arg(long)]
+    endpoint: String,
+    /// Enable TLS
+    #[arg(long)]
+    enable_tls: bool,
+    /// PEM CA certificate bundle to use instead of built-in roots
+    #[arg(long, value_name = "PATH", requires = "enable_tls")]
+    tls_ca_cert: Vec<PathBuf>,
 }
 
 fn is_json(path: &PathBuf) -> bool {
@@ -30,7 +47,20 @@ fn is_journal_log(path: &PathBuf) -> bool {
         .is_some_and(|name| name.starts_with("Journal.") && name.ends_with(".log"))
 }
 
-async fn run(conf: &BeaconConfig) -> Result<()> {
+async fn send_json(client: &Client, endpoint: &str, body: String) {
+    if let Err(err) = client
+        .post(endpoint)
+        .header("Content-Type", "application/json")
+        .body(body)
+        .send()
+        .await
+        .and_then(|response| response.error_for_status())
+    {
+        error!(%err, "failed to send journal data");
+    }
+}
+
+async fn run(watch_path: PathBuf, debounce_ms: u64, client: &Client, endpoint: &str) -> Result<()> {
     let mut pending_files: HashMap<PathBuf, Instant> = HashMap::new();
     let mut log_offsets: HashMap<PathBuf, u64> = HashMap::new();
 
@@ -39,9 +69,9 @@ async fn run(conf: &BeaconConfig) -> Result<()> {
         let _ = tx.start_send(result);
     })?;
 
-    watcher.watch(&conf.watch_path, RecursiveMode::NonRecursive)?;
+    watcher.watch(&watch_path, RecursiveMode::NonRecursive)?;
 
-    let debounce_duration = conf.debounce_ms;
+    let debounce_duration = debounce_ms;
     loop {
         let next_timeout = match pending_files.values().min() {
             Some(earliest) => Either::Left(Delay::new(
@@ -80,8 +110,7 @@ async fn run(conf: &BeaconConfig) -> Result<()> {
                     info!(path=%path.display(), "debounce timer expired. processing journal");
                     if is_json(&path) {
                         let contents = fs::read_to_string(path)?;
-                        // send contents to host from config
-                        println!("{:?}", contents);
+                        send_json(client, endpoint, contents).await;
                     } else if is_journal_log(&path) {
                         let mut file = File::open(&path)?;
                         let file_len = file.metadata()?.len();
@@ -92,8 +121,7 @@ async fn run(conf: &BeaconConfig) -> Result<()> {
                         let mut reader = BufReader::new(file);
 
                         while reader.read_line(&mut line)? > 0 {
-                            println!("{:?}", line);
-                            line.clear();
+                            send_json(client, endpoint, std::mem::take(&mut line)).await;
                         }
                         log_offsets.insert(path, reader.stream_position()?);
                     }
@@ -103,17 +131,51 @@ async fn run(conf: &BeaconConfig) -> Result<()> {
     }
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .init();
 
-    let config = BeaconConfig {
-        watch_path: PathBuf::from("test_logs"),
-        debounce_ms: 50,
-    };
+    let args = BeaconArgs::parse();
 
-    info!("staring watcher");
-    block_on(run(&config))?;
+    let expected_scheme = if args.enable_tls { "https" } else { "http" };
+    let endpoint = if args.endpoint.contains("://") {
+        args.endpoint
+    } else {
+        format!("{expected_scheme}://{}", args.endpoint)
+    };
+    let endpoint = Url::parse(&endpoint)?;
+    if endpoint.scheme() != expected_scheme {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!(
+                "endpoint must use {expected_scheme} when --enable-tls is {}",
+                args.enable_tls
+            ),
+        )
+        .into());
+    }
+
+    let mut client_builder = Client::builder().https_only(args.enable_tls);
+    if !args.enable_tls {
+        client_builder = client_builder.tls_certs_only(Vec::<Certificate>::new());
+    } else if !args.tls_ca_cert.is_empty() {
+        let mut certificates = Vec::new();
+        for path in &args.tls_ca_cert {
+            certificates.extend(Certificate::from_pem_bundle(&fs::read(path)?)?);
+        }
+        client_builder = client_builder.tls_certs_only(certificates);
+    }
+    let client = client_builder.build()?;
+
+    info!("staring file watcher");
+    run(
+        args.watch_path,
+        args.debounce_ms,
+        &client,
+        endpoint.as_str(),
+    )
+    .await?;
     Ok(())
 }
