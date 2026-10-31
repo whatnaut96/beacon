@@ -1,9 +1,9 @@
 name: Beacon Actions
 run-name: CI process for Beacon
 on:
-  push:
-    branches:
-      - releases/**
+  release:
+    types:
+      - published
 jobs:
   build:
     runs-on: ubuntu-latest
