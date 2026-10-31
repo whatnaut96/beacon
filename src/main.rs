@@ -8,6 +8,8 @@ use futures_timer::Delay;
 use notify::{Event, RecursiveMode, Result, Watcher};
 use std::{
     collections::HashMap,
+    fs::{self, File},
+    io::{BufRead, BufReader, Seek, SeekFrom},
     path::PathBuf,
     time::{Duration, Instant},
 };
@@ -18,8 +20,19 @@ struct BeaconConfig {
     debounce_ms: u64,
 }
 
+fn is_json(path: &PathBuf) -> bool {
+    path.extension()
+        .is_some_and(|extension| extension == "json")
+}
+fn is_journal_log(path: &PathBuf) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with("Journal.") && name.ends_with(".log"))
+}
+
 async fn run(conf: &BeaconConfig) -> Result<()> {
     let mut pending_files: HashMap<PathBuf, Instant> = HashMap::new();
+    let mut log_offsets: HashMap<PathBuf, u64> = HashMap::new();
 
     let (mut tx, mut rx) = futures::channel::mpsc::channel::<Result<Event>>(20);
     let mut watcher = notify::recommended_watcher(move |result| {
@@ -42,13 +55,7 @@ async fn run(conf: &BeaconConfig) -> Result<()> {
                 Some(Ok(event)) if matches!(
                     event.kind, notify::EventKind::Create(_) | notify::EventKind::Modify(_)) => {
                     for path in event.paths {
-                        let is_json = path.extension().is_some_and(|extension| extension == "json");
-                        let is_journal = path
-                            .file_name()
-                            .and_then(|name| name.to_str())
-                            .is_some_and(|name| name.starts_with("Journal.") && name.ends_with(".log"));
-
-                        if is_json || is_journal {
+                        if is_json(&path) || is_journal_log(&path){
                             debug!(path = %path.display(), "resetting debounce");
                             pending_files.insert(path, Instant::now() + Duration::from_millis(debounce_duration));
                         }
@@ -70,9 +77,27 @@ async fn run(conf: &BeaconConfig) -> Result<()> {
 
                 for path in ready_files {
                     pending_files.remove(&path);
-                    info!(path=%path.display(), "debounced file");
-                }
+                    info!(path=%path.display(), "debounce timer expired. processing journal");
+                    if is_json(&path) {
+                        let contents = fs::read_to_string(path)?;
+                        // send contents to host from config
+                        println!("{:?}", contents);
+                    } else if is_journal_log(&path) {
+                        let mut file = File::open(&path)?;
+                        let file_len = file.metadata()?.len();
+                        let offset = log_offsets.get(&path).copied().unwrap_or(0);
+                        let offset = if offset <= file_len { offset } else { 0 };
+                        file.seek(SeekFrom::Start(offset))?;
+                        let mut line = String::new();
+                        let mut reader = BufReader::new(file);
 
+                        while reader.read_line(&mut line)? > 0 {
+                            println!("{:?}", line);
+                            line.clear();
+                        }
+                        log_offsets.insert(path, reader.stream_position()?);
+                    }
+                }
             }
         }
     }
