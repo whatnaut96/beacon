@@ -17,3 +17,5 @@ Start Beacon:
 ```
 
 For TLS, add `--enable-tls`. Override trusted CA roots with one or more `--tls-ca-cert <PATH>` arguments.
+
+Beacon stores journal read positions in `.beacon-offsets` inside the watched directory. On restart, it resumes each journal from its last stored position instead of sending previously processed entries again.
