@@ -14,7 +14,7 @@ use std::{
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 const OFFSET_CACHE_FILENAME: &str = ".beacon-offsets";
 
@@ -51,9 +51,18 @@ fn is_journal_log(path: &Path) -> bool {
 
 fn load_log_offsets(cache_path: &Path) -> io::Result<HashMap<PathBuf, u64>> {
     match fs::read(cache_path) {
-        Ok(contents) => serde_json::from_slice(&contents)
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err)),
-        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(HashMap::new()),
+        Ok(contents) => {
+            let offsets: HashMap<PathBuf, u64> = serde_json::from_slice(&contents)
+                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+            debug!(cache_path=%cache_path.display(), offset_count=%offsets.len(), "loaded log offsets from cache");
+            Ok(offsets)
+        }
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            warn!(cache_path=%cache_path.display(),
+                "no cache was found. first log file read will start from the beginning of the file"
+            );
+            Ok(HashMap::new())
+        }
         Err(err) => Err(err),
     }
 }
@@ -63,11 +72,14 @@ fn save_log_offsets(cache_path: &Path, offsets: &HashMap<PathBuf, u64>) -> io::R
         .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
     let temporary_path = cache_path.with_extension("tmp");
     fs::write(&temporary_path, contents)?;
-    fs::rename(temporary_path, cache_path)
+    fs::rename(temporary_path, cache_path)?;
+    debug!(cache_path=%cache_path.display(), offset_count=%offsets.len(), "saved log offsets to cache");
+    Ok(())
 }
 
 async fn send_json(client: &Client, endpoint: &str, body: String) {
-    if let Err(err) = client
+    debug!(endpoint=%endpoint, "sending journal data");
+    match client
         .post(endpoint)
         .header("Content-Type", "application/json")
         .body(body)
@@ -75,7 +87,12 @@ async fn send_json(client: &Client, endpoint: &str, body: String) {
         .await
         .and_then(|response| response.error_for_status())
     {
-        error!(%err, "failed to send journal data");
+        Ok(response) => {
+            debug!(endpoint=%endpoint, status=%response.status(), "sent journal data");
+        }
+        Err(err) => {
+            error!(endpoint=%endpoint, %err, "failed to send journal data");
+        }
     }
 }
 
@@ -98,16 +115,20 @@ async fn run(
 ) -> Result<()> {
     let mut pending_files: HashMap<PathBuf, Instant> = HashMap::new();
     let offset_cache_path = watch_path.join(OFFSET_CACHE_FILENAME);
+    debug!("loading log offsets from cache");
     let mut log_offsets = load_log_offsets(&offset_cache_path)?;
 
     let (mut tx, mut rx) = futures::channel::mpsc::channel::<Result<Event>>(20);
     let mut watcher = notify::recommended_watcher(move |result| {
-        let _ = tx.start_send(result);
+        if let Err(err) = tx.start_send(result) {
+            error!(%err, "failed to queue file watcher event");
+        }
     })?;
 
     watcher.watch(&watch_path, RecursiveMode::NonRecursive)?;
-
+    debug!(watch_path=%watch_path.display(), "watching path for file changes");
     let debounce_duration = debounce_ms;
+    info!(watch_path=%watch_path.display(), debounce_timing_ms=%debounce_duration, "starting file watcher");
     loop {
         let next_timeout = match pending_files.values().min() {
             Some(earliest) => Either::Left(Delay::new(
@@ -131,7 +152,10 @@ async fn run(
                 Some(Err(err)) => {
                     error!(%err, "file watcher error")
                 }
-                None => {},
+                None => {
+                    warn!("file watcher channel closed");
+                    break;
+                },
             },
             _ = next_timeout.fuse() => {
                 let now = Instant::now();
@@ -145,13 +169,20 @@ async fn run(
                     pending_files.remove(&path);
                     info!(path=%path.display(), "debounce timer expired. processing journal");
                     if is_json(&path) {
-                        let contents = fs::read_to_string(path)?;
+                        debug!(file_path=%path.display(), "reading content from path");
+                        let contents = fs::read_to_string(&path)?;
                         send_json_to_endpoints(client, endpoints, contents).await;
                     } else if is_journal_log(&path) {
                         let mut file = File::open(&path)?;
                         let file_len = file.metadata()?.len();
                         let offset = log_offsets.get(&path).copied().unwrap_or(0);
-                        let offset = if offset <= file_len { offset } else { 0 };
+                        let offset = if offset <= file_len {
+                            offset
+                        } else {
+                            warn!(file_path=%path.display(), cached_offset=%offset, file_size=%file_len, "cached offset exceeds file size. reading from the beginning of the file");
+                            0
+                        };
+                        debug!(file_path=%path.display(), file_offset=%offset, "reading content from path");
                         file.seek(SeekFrom::Start(offset))?;
                         let mut line = String::new();
                         let mut reader = BufReader::new(file);
@@ -166,6 +197,7 @@ async fn run(
             }
         }
     }
+    Ok(())
 }
 
 #[tokio::main]
@@ -196,22 +228,26 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             )
             .into());
         }
+        debug!(endpoint=%endpoint_checked, "adding endpoint to set");
         endpoints.push(endpoint_checked);
     }
 
     let mut client_builder = Client::builder().https_only(args.enable_tls);
     if !args.enable_tls {
+        debug!("disabling tls certificates");
         client_builder = client_builder.tls_certs_only(Vec::<Certificate>::new());
     } else if !args.tls_ca_cert.is_empty() {
         let mut certificates = Vec::new();
         for path in &args.tls_ca_cert {
+            debug!(certificate_path=%path.display(), "loading tls ca certificate bundle");
             certificates.extend(Certificate::from_pem_bundle(&fs::read(path)?)?);
         }
+        debug!(certificate_count=%certificates.len(), "loaded tls ca certificates");
         client_builder = client_builder.tls_certs_only(certificates);
     }
     let client = client_builder.build()?;
+    debug!("built client successfully");
 
-    info!("staring file watcher");
     run(args.watch_path, args.debounce_ms, &client, &endpoints).await?;
     Ok(())
 }
