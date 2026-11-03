@@ -28,9 +28,9 @@ struct BeaconArgs {
     /// Debounce interval for the file watcher (milliseconds)
     #[arg(long, default_value_t = 50)]
     debounce_ms: u64,
-    /// HTTP endpoint to send data to
+    /// HTTP endpoint to send data to (can be repeated)
     #[arg(long)]
-    endpoint: String,
+    endpoint: Vec<String>,
     /// Enable TLS
     #[arg(long)]
     enable_tls: bool,
@@ -79,7 +79,23 @@ async fn send_json(client: &Client, endpoint: &str, body: String) {
     }
 }
 
-async fn run(watch_path: PathBuf, debounce_ms: u64, client: &Client, endpoint: &str) -> Result<()> {
+async fn send_json_to_endpoints(client: &Client, endpoints: &[String], body: String) {
+    let Some((last_endpoint, other_endpoints)) = endpoints.split_last() else {
+        return;
+    };
+
+    for endpoint in other_endpoints {
+        send_json(client, endpoint, body.clone()).await;
+    }
+    send_json(client, last_endpoint, body).await;
+}
+
+async fn run(
+    watch_path: PathBuf,
+    debounce_ms: u64,
+    client: &Client,
+    endpoints: &[String],
+) -> Result<()> {
     let mut pending_files: HashMap<PathBuf, Instant> = HashMap::new();
     let offset_cache_path = watch_path.join(OFFSET_CACHE_FILENAME);
     let mut log_offsets = load_log_offsets(&offset_cache_path)?;
@@ -130,7 +146,7 @@ async fn run(watch_path: PathBuf, debounce_ms: u64, client: &Client, endpoint: &
                     info!(path=%path.display(), "debounce timer expired. processing journal");
                     if is_json(&path) {
                         let contents = fs::read_to_string(path)?;
-                        send_json(client, endpoint, contents).await;
+                        send_json_to_endpoints(client, endpoints, contents).await;
                     } else if is_journal_log(&path) {
                         let mut file = File::open(&path)?;
                         let file_len = file.metadata()?.len();
@@ -141,7 +157,7 @@ async fn run(watch_path: PathBuf, debounce_ms: u64, client: &Client, endpoint: &
                         let mut reader = BufReader::new(file);
 
                         while reader.read_line(&mut line)? > 0 {
-                            send_json(client, endpoint, std::mem::take(&mut line)).await;
+                            send_json_to_endpoints(client, endpoints, std::mem::take(&mut line)).await;
                             log_offsets.insert(path.clone(), reader.stream_position()?);
                             save_log_offsets(&offset_cache_path, &log_offsets)?;
                         }
@@ -161,21 +177,26 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let args = BeaconArgs::parse();
 
     let expected_scheme = if args.enable_tls { "https" } else { "http" };
-    let endpoint = if args.endpoint.contains("://") {
-        args.endpoint
-    } else {
-        format!("{expected_scheme}://{}", args.endpoint)
-    };
-    let endpoint = Url::parse(&endpoint)?;
-    if endpoint.scheme() != expected_scheme {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!(
-                "endpoint must use {expected_scheme} when --enable-tls is {}",
-                args.enable_tls
-            ),
-        )
-        .into());
+    let mut endpoints = Vec::new();
+    for endpoint in args.endpoint {
+        let endpoint_checked = if endpoint.contains("://") {
+            endpoint
+        } else {
+            format!("{expected_scheme}://{}", endpoint)
+        };
+
+        let endpoint_url = Url::parse(&endpoint_checked)?;
+        if endpoint_url.scheme() != expected_scheme {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "endpoint must use {expected_scheme} when --enable-tls is {}",
+                    args.enable_tls
+                ),
+            )
+            .into());
+        }
+        endpoints.push(endpoint_checked);
     }
 
     let mut client_builder = Client::builder().https_only(args.enable_tls);
@@ -191,13 +212,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let client = client_builder.build()?;
 
     info!("staring file watcher");
-    run(
-        args.watch_path,
-        args.debounce_ms,
-        &client,
-        endpoint.as_str(),
-    )
-    .await?;
+    run(args.watch_path, args.debounce_ms, &client, &endpoints).await?;
     Ok(())
 }
 
@@ -274,7 +289,7 @@ mod tests {
 
         assert_eq!(args.watch_path, PathBuf::from("test_logs"));
         assert_eq!(args.debounce_ms, 50);
-        assert_eq!(args.endpoint, "localhost:8080");
+        assert_eq!(args.endpoint, ["localhost:8080"]);
         assert!(!args.enable_tls);
         assert!(args.tls_ca_cert.is_empty());
     }
