@@ -13,7 +13,7 @@ cargo build
 Start Beacon:
 
 ```sh
-.beacon -w test_logs --endpoint localhost:8080
+beacon -w test_logs --endpoint localhost:8080
 ```
 
 For TLS, add `--enable-tls`. Override trusted CA roots with one or more `--tls-ca-cert <PATH>` arguments.
