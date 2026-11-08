@@ -21,6 +21,7 @@
           src = ./.;
 
           cargoLock.lockFile = ./Cargo.lock;
+          env.RUSTFLAGS = "-C target-feature=+crt-static";
         };
       in
       {
