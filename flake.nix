@@ -13,6 +13,7 @@
 
         pkgsAarch64Linux = pkgs.pkgsCross.aarch64-multiplatform;
         pkgsWindows = pkgs.pkgsCross.mingwW64;
+        pkgsMusl = pkgs.pkgsCross.musl64;
 
         mkBeacon = p: p.rustPlatform.buildRustPackage {
           pname = "beacon";
@@ -34,9 +35,10 @@
         };
 
         packages = {
-          default = mkBeacon pkgs; # Native x86_64-linux
+          default = mkBeacon pkgs;       # Native x86_64-linux (glibc)
+          x86_64-musl = mkBeacon pkgsMusl; # Static x86_64-linux (musl) for Steam Deck
           aarch64-linux = mkBeacon pkgsAarch64Linux; # ARM64 Linux
-          x86_64-windows = mkBeacon pkgsWindows; # Windows x86_64
+          x86_64-windows = mkBeacon pkgsWindows;   # Windows x86_64
         };
       }
     );
